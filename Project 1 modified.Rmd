@@ -1,0 +1,186 @@
+---
+title: "Project 1"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Alexandra Rivera ar63757
+
+------------------------------------------------------------------------
+
+*Adressments:
+Join/Merge- I am not sure why there were additional rows, I attempted to test out the different join functions, but they all resulted in the same large number of rows after merging. 
+Summary Statistics- I gave a very general overview of the summary statistics when this is where I should have been specific, for example the standard deviation for hours worked was 725.44 so this could tell us that there may be too much variation in working hours in order to compare incomes amound households. However, the number of kids and mean income didn't seem to vary very much, this could lead to the conclusion that my null hypothesis is correct in saying that there is not a significant difference between hours worked and number of kids.
+Visualizations- I changed my plot colors to rainbow, though I don't know why there are black points all over my second to last plot.
+
+
+
+
+#### Intro: I selected the datasets PSID1976 and Mroz from readily available R datasets, they describe Labor Force Participation Data and U.S. Women's Labor Force Participation respectively. The Mroz set contains labor-force participation, number of children, age, parents college attendance, log expected wage rate, and family income exclusive of the wife's income. This set was an empirical model of 1975 labor supply data obtained from the Panel Study of Income Dynamics. The PSID1976 data was also based off of the previous year's Panel Study of Income Dynamics for married women, it contains many more variables than Mroz, consisting of hours, husband info, unemployment rate in the county of residence, city, college attendance, etc. I was interested in this research because am interested in exploring differences in women's wages back in the day and how they have changed or can be compared to men's wages. To tidy these datasets, I selected the columns of interest, and then needed to add kids columns together through mutation because both had two different columns for older kids and younger kids counts. I originally wanted to see how the difference in the number of children related to a woman being in the labor force so I am hoping to find a strong correlation between these variables. I wonder if having more children means that mothers need to work more or if they stay at home more while the father makes the money.
+
+##### 1. Tidy
+```{r}
+library(dplyr)
+library(readxl)
+setwd("/Users/alexandrarivera/Downloads")
+PSID1976 <- read_excel("PSID1976.xlsx")
+Mroz <- read_excel("Mroz.xlsx")
+
+survey <- PSID1976 %>% 
+  # select only a few variables from the dataset
+  select(youngkids, oldkids, tax, hours) %>%
+  # add the separate values of kids 
+  mutate(kids = youngkids + oldkids) %>%
+  select(-youngkids, -oldkids)
+survey
+
+labor <- Mroz %>% 
+  # select only a few variables from the dataset
+  select(lfp,k5, k618, lwg, inc) %>%
+  mutate(kids = k5 + k618) %>%
+  select(-k5, -k618)
+labor
+```
+
+#### Combining Data: I selected to perform a full join on the datasets because I wanted to match all of the variables and I knew I would be able to remove rows. I omitted any values of zero by converting zeroes to na and then omitting them, only distinct values were taken into account, there were 84,023 rows dropped and saved into 'joined'. The amount of rows after joining was much higher that what is originally in each set, I think this may be a problem.
+
+#####  2. Join/Merge
+```{r}
+joined <- labor %>%
+  # compute a full join to match all observations with the key variable
+  full_join(survey, by="kids") %>%
+  # convert zeroes to na values
+  na_if("0") %>%
+  # remove rows with na 
+  na.omit() %>%
+  # only count distinct values
+  distinct() 
+joined
+```
+
+#### Summarize: To test different function of dplyr, 'explore' was created which manipulated the joined data by filtering the rows to have a limit of six kids, using select to bring the kids column to the front, arranging by the number of kids in descending order, and creating a new column 'taxed' which defined the amount taxed by household income. Elements of 'explore' were described by both summary() and describe() which gave statistics that included mean, median, minimum, maximum, standard deviation, range, etc. Group_by was then used along with summarise() to summarize the mean household income per number of kids per observation, and described also using summary(), the mean household income for 1 kid was about 21.34 while the mean household income for the most kids was about 16.62, so maybe more kids means the families made less money. Two kable tables were created that presented the summary(explore) results as well as correlations between explore() variables. 
+
+#####  3. Create summary statistics
+```{r}
+#install.packages("Hmisc")
+#install.packages("psych")
+#install.packages("kableExtra")
+library(kableExtra)
+library(Hmisc)
+library(tidyverse)
+library(psych)
+library(dplyr)
+
+
+# explore functions in dplyr
+explore <- joined %>%
+  # restrict the max number of kids to six
+  filter(kids<="6") %>% 
+  # bring kids column to the front 
+  select(kids, everything()) %>% 
+  # arrange number of kids in a descending order
+  arrange(desc(kids)) %>%
+  # create a new column 'taxed' that is the amount taxed by household income
+  mutate(taxed = inc*tax)
+
+# summarize elements in explore
+summary(explore)
+describe(explore)
+
+# grouped summarizes the mean household income per number of kids 
+grouped <- explore %>%
+  group_by(kids) %>%
+  summarise(mean_inc=mean(inc))
+grouped
+
+# summarize grouped elements 
+summary(grouped)
+
+summary(explore) %>%
+  kbl() %>%
+  kable_material_dark() 
+
+matrix <- explore %>%
+  select(-lfp) %>%
+  cor() %>%
+  kbl() %>%
+  kable_material_dark() 
+matrix
+```
+
+#### Visualizations: A heat map was developed to show the correlation matrix of 'matcha', same as 'explore' but with only the numeric values. Correlation of matcha values were converted into a data frame, row names converted to an explicit variable, and then a ggplot was developed. The correlation matrix showed that there was a very high correlation of 0.97 between income and the taxed variable that was created meaning that these variables are very related to each other, this makes sense because I made this variable by multiplying income with tax. Other relationships had much lower correlation values, which was a bit disappointing. The next highest correlation was a value of 0.22 between number of kids and tax, indicating that the might be a slight relationship between having more kids and being taxed more. Additional plots compared household income with log expected wage rate and revealed that there is not much difference in household income with wage rate, possibly because household income is less dependent on the amount that the wife makes and more so on the husband's income. The last ggplot compared tax and number of kids, but it seemed like the number of kids had only very slight differences in tax values. 
+
+##### 4. Make visualizations
+```{r}
+matcha <- explore %>%
+  # keep only numeric variables
+  select(-lfp)
+
+cor(matcha) %>%
+  as.data.frame %>%
+  # convert row names to an explicit variable
+  rownames_to_column %>%
+  pivot_longer(-1, names_to = "other_var", values_to = "correlation") %>%
+  ggplot(aes(rowname, ordered(other_var, levels = rev(sort(unique(other_var)))), fill=correlation)) +
+  # Heatmap with geom_tile
+  geom_tile() +
+  # Change the scale to make the middle appear neutral
+  scale_fill_gradient2(low="red",mid="white",high="blue") +
+  # Overlay values
+  geom_text(aes(label = round(correlation,2)), color = "black", size = 4) +
+  # Give title and labels
+  labs(title = "Correlation matrix for the dataset PSID1976 and Mroz", x = "variable 1", y = "variable 2")
+
+```
+
+```{r}
+matcha %>%
+  ggplot(aes(inc, lwg)) +
+  geom_point(aes(color=hours)) +
+  scale_color_gradientn(colours = rainbow(5)) +
+  stat_summary(fun = mean, geom='point') +
+  ylab("log expected wage") + xlab("family income") + ggtitle("Family Income versus Log Expected Wage")
+```
+
+```{r}
+matcha %>%
+  ggplot(aes(kids, tax)) +
+  geom_point(aes(color=hours)) +
+  scale_color_gradientn(colours = rainbow(5)) +
+  stat_summary(fun = mean, geom='line') +
+  ylab("tax") + xlab("kids") + ggtitle("Kids versus Tax")
+```
+
+#### PCA: Using matcha, a PCA was created after scaling numeric values and using prcomp(). Using get_eigenvalue(pca), eigenvalues revealed how much variance there is in the data, the highest eigenvalues were in dimensions one and two, indicating that only those dimensions should be retained because there values were over 1 (2.014 and 1.43), though dimension 3 was very close. The code in line 163 created a scree plot, describing the percentage of explained variances per dimensions, dimension 1 had a percentage of 33.6% and dimension 2 had a percentage of 23.8%. The matrix, x, of new data provided by the PCA was saved as a data frame in line 165 and then used to create a ggplot comparing principal components 1 and 2 with the color being defined by the number of kids the observation has. At the very end, using fviz_contrib() allows for the visualization of the variables to the PC1 and PC2 dimensions, we can see that taxed and inc heavily influence PC1 while kids, tax, and hours contribute to PC2.
+
+##### 5. Perform k-means/PAM clustering or PCA
+```{r}
+library(cluster)
+#install.packages("factoextra")
+library(factoextra)
+
+# create pca
+pca <- matcha %>%
+  # scale the numeric values
+  mutate_if(is.numeric, scale) %>%
+  prcomp()
+
+# Visualize the eigenvalues and variances of the PCS in a table
+get_eigenvalue(pca)
+
+# Visualize percentage of variances for each PC in a scree plot
+fviz_eig(pca, addlabels = TRUE, ylim = c(0, 90))
+
+pca_1 <- as.data.frame(pca[["x"]])
+
+ggplot(pca_1,  aes(x = PC1, y = PC2)) + geom_point(aes(colour=matcha$kids)) + xlab("PC1") + ylab("PC2") 
+
+# Visualize the 5 top contributions of the variables to the PCs in a bar graph
+  # Note the red dash line indicates the average contribution
+fviz_contrib(pca, choice = "var", axes = 1, top = 5) # on PC1
+fviz_contrib(pca, choice = "var", axes = 2, top = 5) # on PC2
+
+```
+
